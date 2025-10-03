@@ -36,6 +36,7 @@ def main() -> None:
     # Register command handlers
     application.add_handler(CommandHandler("start", commands.start))
     application.add_handler(CommandHandler("help", commands.help_command))
+    application.add_handler(CommandHandler("ping", commands.ping))
     application.add_handler(CommandHandler("status", commands.status))
 
     # Register message handler (natural language)
