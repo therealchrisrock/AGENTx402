@@ -3,17 +3,23 @@
 from typing import List, Optional
 from uuid import UUID
 
-from sqlalchemy import delete as sql_delete
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.backend.features.agents.domain.entities import Mandate
 from src.backend.features.agents.domain.repositories import IMandateRepository
 from src.backend.features.agents.infrastructure.models import MandateMapper, MandateORM
+from src.backend.shared.infrastructure.persistence import SQLAlchemyRepository
 
 
-class SQLAlchemyMandateRepository(IMandateRepository):
-    """SQLAlchemy implementation of mandate repository."""
+class SQLAlchemyMandateRepository(
+    SQLAlchemyRepository[Mandate, MandateORM], IMandateRepository
+):
+    """SQLAlchemy implementation of mandate repository.
+
+    Inherits common CRUD operations from SQLAlchemyRepository.
+    Adds domain-specific query methods for mandates.
+    """
 
     def __init__(self, session: AsyncSession) -> None:
         """Initialize repository.
@@ -21,94 +27,11 @@ class SQLAlchemyMandateRepository(IMandateRepository):
         Args:
             session: SQLAlchemy async session
         """
-        self.session = session
-        self.mapper = MandateMapper()
-
-    async def add(self, entity: Mandate) -> Mandate:
-        """Add a new mandate.
-
-        Args:
-            entity: Mandate to add
-
-        Returns:
-            The added mandate
-        """
-        orm_model = self.mapper.to_orm(entity)
-        self.session.add(orm_model)
-        await self.session.flush()
-        return entity
-
-    async def get_by_id(self, entity_id: UUID) -> Optional[Mandate]:
-        """Get mandate by ID.
-
-        Args:
-            entity_id: Mandate ID
-
-        Returns:
-            Mandate if found, None otherwise
-        """
-        result = await self.session.execute(
-            select(MandateORM).where(MandateORM.id == entity_id)
+        super().__init__(
+            session=session, model_class=MandateORM, mapper=MandateMapper()
         )
-        orm_model = result.scalar_one_or_none()
-        return self.mapper.to_domain(orm_model) if orm_model else None
 
-    async def get_all(self) -> List[Mandate]:
-        """Get all mandates.
-
-        Returns:
-            List of all mandates
-        """
-        result = await self.session.execute(select(MandateORM))
-        orm_models = result.scalars().all()
-        return self.mapper.to_domain_list(list(orm_models))
-
-    async def update(self, entity: Mandate) -> Mandate:
-        """Update an existing mandate.
-
-        Args:
-            entity: Mandate to update
-
-        Returns:
-            The updated mandate
-        """
-        result = await self.session.execute(
-            select(MandateORM).where(MandateORM.id == entity.id)
-        )
-        orm_model = result.scalar_one_or_none()
-
-        if orm_model:
-            self.mapper.to_orm(entity, orm_model)
-            await self.session.flush()
-
-        return entity
-
-    async def delete(self, entity_id: UUID) -> bool:
-        """Delete a mandate.
-
-        Args:
-            entity_id: Mandate ID
-
-        Returns:
-            True if deleted, False otherwise
-        """
-        result = await self.session.execute(
-            sql_delete(MandateORM).where(MandateORM.id == entity_id)
-        )
-        await self.session.flush()
-        return result.rowcount > 0
-
-    async def exists(self, entity_id: UUID) -> bool:
-        """Check if mandate exists.
-
-        Args:
-            entity_id: Mandate ID
-
-        Returns:
-            True if exists, False otherwise
-        """
-        mandate = await self.get_by_id(entity_id)
-        return mandate is not None
+    # Domain-specific queries below
 
     async def get_by_user_id(self, user_id: UUID) -> List[Mandate]:
         """Get all mandates for a user.
@@ -120,7 +43,7 @@ class SQLAlchemyMandateRepository(IMandateRepository):
             List of user's mandates
         """
         result = await self.session.execute(
-            select(MandateORM).where(MandateORM.user_id == user_id)
+            select(self.model_class).where(self.model_class.user_id == user_id)
         )
         orm_models = result.scalars().all()
         return self.mapper.to_domain_list(list(orm_models))
@@ -135,10 +58,10 @@ class SQLAlchemyMandateRepository(IMandateRepository):
             List of active mandates
         """
         result = await self.session.execute(
-            select(MandateORM).where(
-                MandateORM.user_id == user_id,
-                MandateORM.revoked == False,  # noqa: E712
-                MandateORM.signature.isnot(None),
+            select(self.model_class).where(
+                self.model_class.user_id == user_id,
+                self.model_class.revoked == False,  # noqa: E712
+                self.model_class.signature.isnot(None),
             )
         )
         orm_models = result.scalars().all()
@@ -155,8 +78,8 @@ class SQLAlchemyMandateRepository(IMandateRepository):
             Mandate if found, None otherwise
         """
         result = await self.session.execute(
-            select(MandateORM).where(
-                MandateORM.user_id == user_id, MandateORM.nonce == nonce
+            select(self.model_class).where(
+                self.model_class.user_id == user_id, self.model_class.nonce == nonce
             )
         )
         orm_model = result.scalar_one_or_none()
