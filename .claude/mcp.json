@@ -1,0 +1,18 @@
+{
+  "mcpServers": {
+    "AP2 Docs": {
+      "command": "npx",
+      "args": [
+        "mcp-remote",
+        "https://gitmcp.io/google-agentic-commerce/AP2"
+      ]
+    },
+    "Codebase Docs": {
+      "command": "npx",
+      "args": [
+        "mcp-remote",
+        "https://gitmcp.io/codebase"
+      ]
+    }
+  }
+}
