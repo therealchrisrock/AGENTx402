@@ -9,6 +9,7 @@ from uuid import uuid4
 
 import grpc
 from google.protobuf import timestamp_pb2
+from sqlalchemy.ext.asyncio import AsyncSession
 
 # Import generated proto files
 import sys
@@ -17,6 +18,20 @@ sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
 
 from gen.python.api.v1 import telegram_pb2, telegram_pb2_grpc
 
+# Import user domain and application
+from src.backend.core.dependencies import get_db
+from src.backend.features.users.application.commands import (
+    RegisterUserCommand,
+    RegisterUserCommandHandler,
+    ConnectWalletCommand,
+    ConnectWalletCommandHandler,
+)
+from src.backend.features.users.application.queries import (
+    GetUserByTelegramIdQuery,
+    GetUserByTelegramIdQueryHandler,
+)
+from src.backend.features.users.domain.value_objects import UserState
+
 logger = logging.getLogger(__name__)
 
 
@@ -24,10 +39,26 @@ class TelegramBackendServicer(telegram_pb2_grpc.TelegramBackendServicer):
     """Implementation of the TelegramBackend gRPC service."""
 
     def __init__(self):
-        """Initialize the service with in-memory user storage (for testing)."""
-        # In-memory storage for testing
-        self.users = {}
+        """Initialize the service."""
         logger.info("TelegramBackendServicer initialized")
+
+    def _map_user_state(self, state: UserState) -> int:
+        """Map domain UserState to proto UserState.
+
+        Args:
+            state: Domain user state
+
+        Returns:
+            Proto user state enum value
+        """
+        state_map = {
+            UserState.NEW: telegram_pb2.USER_STATE_NEW,
+            UserState.WALLET_CONNECTED: telegram_pb2.USER_STATE_WALLET_CONNECTED,
+            UserState.WALLET_CONNECTED_NO_FUNDS: telegram_pb2.USER_STATE_WALLET_CONNECTED,
+            UserState.FUNDED: telegram_pb2.USER_STATE_FUNDED,
+            UserState.ACTIVE_TRADER: telegram_pb2.USER_STATE_ACTIVE_TRADER,
+        }
+        return state_map.get(state, telegram_pb2.USER_STATE_UNSPECIFIED)
 
     async def Ping(self, request, context):
         """Health check endpoint."""
@@ -46,90 +77,99 @@ class TelegramBackendServicer(telegram_pb2_grpc.TelegramBackendServicer):
         """Get user state by telegram ID."""
         logger.info(f"GetUserState for telegram_id: {request.telegram_id}")
 
-        user = self.users.get(request.telegram_id)
+        # Get database session
+        async for session in get_db():
+            try:
+                query_handler = GetUserByTelegramIdQueryHandler(session)
+                query = GetUserByTelegramIdQuery(telegram_id=request.telegram_id)
+                user = await query_handler.handle(query)
 
-        if not user:
-            return telegram_pb2.GetUserStateResponse(
-                user_exists=False,
-                state=telegram_pb2.USER_STATE_UNSPECIFIED
-            )
+                if not user:
+                    return telegram_pb2.GetUserStateResponse(
+                        user_exists=False,
+                        state=telegram_pb2.USER_STATE_UNSPECIFIED
+                    )
 
-        return telegram_pb2.GetUserStateResponse(
-            user_exists=True,
-            state=user['state'],
-            user_id=user['user_id'],
-            wallet_address=user.get('wallet_address', ''),
-            balance=user.get('balance', 0.0)
-        )
+                return telegram_pb2.GetUserStateResponse(
+                    user_exists=True,
+                    state=self._map_user_state(user.state),
+                    user_id=str(user.id),
+                    wallet_address=user.wallet_address or '',
+                    balance=user.balance
+                )
+            finally:
+                await session.close()
 
     async def RegisterUser(self, request, context):
         """Register a new user."""
         logger.info(f"RegisterUser: {request.telegram_id}, username: {request.telegram_username}")
 
-        # Check if user already exists
-        if request.telegram_id in self.users:
-            user = self.users[request.telegram_id]
-            return telegram_pb2.RegisterUserResponse(
-                user_id=user['user_id'],
-                state=user['state'],
-                success=False,
-                message="User already exists"
-            )
+        # Get database session
+        async for session in get_db():
+            try:
+                command_handler = RegisterUserCommandHandler(session)
+                command = RegisterUserCommand(
+                    telegram_id=request.telegram_id,
+                    telegram_username=request.telegram_username or None
+                )
+                result = await command_handler.handle(command)
 
-        # Create new user
-        user_id = str(uuid4())
-        self.users[request.telegram_id] = {
-            'user_id': user_id,
-            'telegram_username': request.telegram_username,
-            'state': telegram_pb2.USER_STATE_NEW,
-            'created_at': datetime.utcnow()
-        }
+                if result.already_exists:
+                    # Get existing user to return state
+                    query_handler = GetUserByTelegramIdQueryHandler(session)
+                    query = GetUserByTelegramIdQuery(telegram_id=request.telegram_id)
+                    user = await query_handler.handle(query)
 
-        return telegram_pb2.RegisterUserResponse(
-            user_id=user_id,
-            state=telegram_pb2.USER_STATE_NEW,
-            success=True,
-            message="User registered successfully"
-        )
+                    return telegram_pb2.RegisterUserResponse(
+                        user_id=str(user.id) if user else '',
+                        state=self._map_user_state(user.state) if user else telegram_pb2.USER_STATE_UNSPECIFIED,
+                        success=False,
+                        message=result.message
+                    )
+
+                return telegram_pb2.RegisterUserResponse(
+                    user_id=str(result.user_id) if result.user_id else '',
+                    state=telegram_pb2.USER_STATE_NEW,
+                    success=result.success,
+                    message=result.message
+                )
+            finally:
+                await session.close()
 
     async def ConnectWallet(self, request, context):
         """Connect wallet to user account."""
         logger.info(f"ConnectWallet: user_id={request.user_id}, wallet={request.wallet_address}")
 
-        # Find user by user_id
-        user = None
-        telegram_id = None
-        for tid, u in self.users.items():
-            if u['user_id'] == request.user_id:
-                user = u
-                telegram_id = tid
-                break
+        # Get database session
+        async for session in get_db():
+            try:
+                # Parse UUID from string
+                from uuid import UUID
+                try:
+                    user_id = UUID(request.user_id)
+                except ValueError:
+                    return telegram_pb2.ConnectWalletResponse(
+                        success=False,
+                        message="Invalid user ID format",
+                        new_state=telegram_pb2.USER_STATE_UNSPECIFIED
+                    )
 
-        if not user:
-            return telegram_pb2.ConnectWalletResponse(
-                success=False,
-                message="User not found",
-                new_state=telegram_pb2.USER_STATE_UNSPECIFIED
-            )
+                command_handler = ConnectWalletCommandHandler(session)
+                command = ConnectWalletCommand(
+                    user_id=user_id,
+                    wallet_address=request.wallet_address,
+                    wallet_type=request.wallet_type or "manual"
+                )
+                result = await command_handler.handle(command)
 
-        # Update user with wallet
-        user['wallet_address'] = request.wallet_address
-        user['wallet_type'] = request.wallet_type
-        user['state'] = telegram_pb2.USER_STATE_WALLET_CONNECTED
-
-        # Simulate balance check (would call web3 in production)
-        balance = 1000.0 if request.wallet_address.startswith('0x') else 0.0
-        user['balance'] = balance
-
-        if balance >= 50:
-            user['state'] = telegram_pb2.USER_STATE_FUNDED
-
-        return telegram_pb2.ConnectWalletResponse(
-            success=True,
-            message=f"Wallet connected successfully. Balance: ${balance:.2f}",
-            new_state=user['state'],
-            balance=balance
-        )
+                return telegram_pb2.ConnectWalletResponse(
+                    success=result.success,
+                    message=result.message,
+                    new_state=self._map_user_state(result.new_state) if result.new_state else telegram_pb2.USER_STATE_UNSPECIFIED,
+                    balance=result.balance
+                )
+            finally:
+                await session.close()
 
     async def ClassifyIntent(self, request, context):
         """Classify user message intent."""
