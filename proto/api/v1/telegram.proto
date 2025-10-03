@@ -1,0 +1,99 @@
+syntax = "proto3";
+
+package api.v1;
+
+import "google/protobuf/timestamp.proto";
+
+// Service definition for Telegram bot to backend communication
+service TelegramBackend {
+  // Health check
+  rpc Ping(PingRequest) returns (PingResponse);
+
+  // User management
+  rpc GetUserState(GetUserStateRequest) returns (GetUserStateResponse);
+  rpc RegisterUser(RegisterUserRequest) returns (RegisterUserResponse);
+  rpc ConnectWallet(ConnectWalletRequest) returns (ConnectWalletResponse);
+
+  // Intent classification (for later)
+  rpc ClassifyIntent(ClassifyIntentRequest) returns (ClassifyIntentResponse);
+}
+
+// Health check messages
+message PingRequest {
+  string message = 1;
+}
+
+message PingResponse {
+  string message = 1;
+  google.protobuf.Timestamp server_time = 2;
+}
+
+// User state management
+enum UserState {
+  USER_STATE_UNSPECIFIED = 0;
+  USER_STATE_NEW = 1;
+  USER_STATE_WALLET_CONNECTED = 2;
+  USER_STATE_FUNDED = 3;
+  USER_STATE_ACTIVE_TRADER = 4;
+}
+
+message GetUserStateRequest {
+  int64 telegram_id = 1;
+}
+
+message GetUserStateResponse {
+  bool user_exists = 1;
+  UserState state = 2;
+  string user_id = 3;  // UUID as string
+  string wallet_address = 4;
+  double balance = 5;
+}
+
+// User registration
+message RegisterUserRequest {
+  int64 telegram_id = 1;
+  string telegram_username = 2;
+}
+
+message RegisterUserResponse {
+  string user_id = 1;  // UUID as string
+  UserState state = 2;
+  bool success = 3;
+  string message = 4;
+}
+
+// Wallet connection
+message ConnectWalletRequest {
+  string user_id = 1;
+  string wallet_address = 2;
+  string wallet_type = 3;  // "metamask", "walletconnect", "phantom", "manual"
+}
+
+message ConnectWalletResponse {
+  bool success = 1;
+  string message = 2;
+  UserState new_state = 3;
+  double balance = 4;
+}
+
+// Intent classification (for NLP)
+message ClassifyIntentRequest {
+  string message = 1;
+  int64 telegram_id = 2;
+  map<string, string> context = 3;
+}
+
+message ClassifyIntentResponse {
+  enum IntentDomain {
+    INTENT_DOMAIN_UNSPECIFIED = 0;
+    INTENT_DOMAIN_ONBOARDING = 1;
+    INTENT_DOMAIN_TRADING = 2;
+    INTENT_DOMAIN_PORTFOLIO = 3;
+    INTENT_DOMAIN_HELP = 4;
+  }
+
+  IntentDomain domain = 1;
+  string action = 2;
+  map<string, string> entities = 3;
+  double confidence = 4;
+}

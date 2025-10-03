@@ -85,7 +85,33 @@ async def hello_world():
     return {"message": "Hello World"}
 
 
-if __name__ == "__main__":
-    import uvicorn
+async def run_servers():
+    """Run both HTTP and gRPC servers concurrently."""
+    import asyncio
+    from src.backend.grpc_server import serve as grpc_serve
 
-    uvicorn.run("src.backend.main:app", host="0.0.0.0", port=8000, reload=True)
+    # Start gRPC server task
+    grpc_task = asyncio.create_task(grpc_serve(port=50051))
+
+    # Start FastAPI with uvicorn
+    import uvicorn
+    config = uvicorn.Config(
+        "src.backend.main:app",
+        host="0.0.0.0",
+        port=8000,
+        log_level="info"
+    )
+    server = uvicorn.Server(config)
+
+    # Run both servers
+    await asyncio.gather(
+        server.serve(),
+        grpc_task
+    )
+
+
+if __name__ == "__main__":
+    import asyncio
+
+    # For development, run both servers
+    asyncio.run(run_servers())
