@@ -1,6 +1,6 @@
 """Mandate intent value object."""
 
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 
 from pydantic import field_validator
@@ -56,7 +56,11 @@ class MandateIntent(ValueObject):
         Raises:
             ValueError: If datetime is not in the future
         """
-        if v <= datetime.utcnow():
+        now = datetime.now(timezone.utc)
+        # Make v timezone-aware if it's naive
+        if v.tzinfo is None:
+            v = v.replace(tzinfo=timezone.utc)
+        if v <= now:
             raise ValueError("valid_until must be in the future")
         return v
 
@@ -66,4 +70,8 @@ class MandateIntent(ValueObject):
         Returns:
             True if valid, False otherwise
         """
-        return datetime.utcnow() < self.valid_until
+        now = datetime.now(timezone.utc)
+        valid_until = self.valid_until
+        if valid_until.tzinfo is None:
+            valid_until = valid_until.replace(tzinfo=timezone.utc)
+        return now < valid_until

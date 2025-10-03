@@ -7,7 +7,10 @@ from alembic import context
 from dotenv import load_dotenv
 from sqlalchemy import engine_from_config, pool
 
-from src.backend.shared.infrastructure.database import Base
+from src.backend.shared.infrastructure.persistence import BaseModel
+
+# Import ORM models so Alembic can detect them
+from src.backend.features.agents.infrastructure.models import AgentORM, MandateORM  # noqa: F401
 
 # Load environment variables
 load_dotenv()
@@ -30,7 +33,7 @@ if config.config_file_name is not None:
 
 # add your model's MetaData object here
 # for 'autogenerate' support
-target_metadata = Base.metadata
+target_metadata = BaseModel.metadata
 
 # other values from the config, defined by the needs of env.py,
 # can be acquired:

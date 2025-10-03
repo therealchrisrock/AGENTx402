@@ -30,10 +30,7 @@ router = APIRouter()
 
 
 # Dependency to get database session
-async def get_db_session() -> AsyncSession:
-    """Get database session dependency."""
-    # TODO: Inject from app context
-    raise NotImplementedError("Database session dependency not yet configured")
+from src.backend.core.dependencies import get_db as get_db_session
 
 
 @router.post("/", response_model=AgentResponse, status_code=status.HTTP_201_CREATED)
