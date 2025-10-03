@@ -3,10 +3,13 @@
 from typing import List, Optional
 from uuid import UUID
 
+from sqlalchemy import delete as sql_delete
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.backend.features.agents.domain.entities import Agent, AgentStatus
 from src.backend.features.agents.domain.repositories import IAgentRepository
+from src.backend.features.agents.infrastructure.models import AgentMapper, AgentORM
 
 
 class SQLAlchemyAgentRepository(IAgentRepository):
@@ -19,6 +22,7 @@ class SQLAlchemyAgentRepository(IAgentRepository):
             session: SQLAlchemy async session
         """
         self.session = session
+        self.mapper = AgentMapper()
 
     async def add(self, entity: Agent) -> Agent:
         """Add a new agent.
@@ -29,7 +33,9 @@ class SQLAlchemyAgentRepository(IAgentRepository):
         Returns:
             The added agent
         """
-        # TODO: Convert domain entity to SQLAlchemy model
+        orm_model = self.mapper.to_orm(entity)
+        self.session.add(orm_model)
+        await self.session.flush()
         return entity
 
     async def get_by_id(self, entity_id: UUID) -> Optional[Agent]:
@@ -41,8 +47,9 @@ class SQLAlchemyAgentRepository(IAgentRepository):
         Returns:
             Agent if found, None otherwise
         """
-        # TODO: Implement SQLAlchemy query
-        return None
+        result = await self.session.execute(select(AgentORM).where(AgentORM.id == entity_id))
+        orm_model = result.scalar_one_or_none()
+        return self.mapper.to_domain(orm_model) if orm_model else None
 
     async def get_all(self) -> List[Agent]:
         """Get all agents.
@@ -50,8 +57,9 @@ class SQLAlchemyAgentRepository(IAgentRepository):
         Returns:
             List of all agents
         """
-        # TODO: Implement SQLAlchemy query
-        return []
+        result = await self.session.execute(select(AgentORM))
+        orm_models = result.scalars().all()
+        return self.mapper.to_domain_list(list(orm_models))
 
     async def update(self, entity: Agent) -> Agent:
         """Update an existing agent.
@@ -62,7 +70,15 @@ class SQLAlchemyAgentRepository(IAgentRepository):
         Returns:
             The updated agent
         """
-        # TODO: Implement SQLAlchemy update
+        result = await self.session.execute(
+            select(AgentORM).where(AgentORM.id == entity.id)
+        )
+        orm_model = result.scalar_one_or_none()
+
+        if orm_model:
+            self.mapper.to_orm(entity, orm_model)
+            await self.session.flush()
+
         return entity
 
     async def delete(self, entity_id: UUID) -> bool:
@@ -74,8 +90,11 @@ class SQLAlchemyAgentRepository(IAgentRepository):
         Returns:
             True if deleted, False otherwise
         """
-        # TODO: Implement SQLAlchemy delete
-        return False
+        result = await self.session.execute(
+            sql_delete(AgentORM).where(AgentORM.id == entity_id)
+        )
+        await self.session.flush()
+        return result.rowcount > 0
 
     async def exists(self, entity_id: UUID) -> bool:
         """Check if agent exists.
@@ -98,8 +117,11 @@ class SQLAlchemyAgentRepository(IAgentRepository):
         Returns:
             List of user's agents
         """
-        # TODO: Implement SQLAlchemy query
-        return []
+        result = await self.session.execute(
+            select(AgentORM).where(AgentORM.user_id == user_id)
+        )
+        orm_models = result.scalars().all()
+        return self.mapper.to_domain_list(list(orm_models))
 
     async def get_by_mandate_id(self, mandate_id: UUID) -> Optional[Agent]:
         """Get agent by mandate ID.
@@ -110,8 +132,11 @@ class SQLAlchemyAgentRepository(IAgentRepository):
         Returns:
             Agent if found, None otherwise
         """
-        # TODO: Implement SQLAlchemy query
-        return None
+        result = await self.session.execute(
+            select(AgentORM).where(AgentORM.mandate_id == mandate_id)
+        )
+        orm_model = result.scalar_one_or_none()
+        return self.mapper.to_domain(orm_model) if orm_model else None
 
     async def get_by_status(self, status: AgentStatus) -> List[Agent]:
         """Get all agents with a specific status.
@@ -122,8 +147,11 @@ class SQLAlchemyAgentRepository(IAgentRepository):
         Returns:
             List of agents with the status
         """
-        # TODO: Implement SQLAlchemy query
-        return []
+        result = await self.session.execute(
+            select(AgentORM).where(AgentORM.status == status.value)
+        )
+        orm_models = result.scalars().all()
+        return self.mapper.to_domain_list(list(orm_models))
 
     async def get_active_agents(self, user_id: UUID) -> List[Agent]:
         """Get all active agents for a user.
@@ -134,5 +162,10 @@ class SQLAlchemyAgentRepository(IAgentRepository):
         Returns:
             List of active agents
         """
-        # TODO: Implement SQLAlchemy query with filters
-        return []
+        result = await self.session.execute(
+            select(AgentORM).where(
+                AgentORM.user_id == user_id, AgentORM.status == AgentStatus.ACTIVE.value
+            )
+        )
+        orm_models = result.scalars().all()
+        return self.mapper.to_domain_list(list(orm_models))

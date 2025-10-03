@@ -2,10 +2,14 @@
 
 import logging
 from contextlib import asynccontextmanager
+from typing import AsyncGenerator
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.backend.core.config import get_settings
+from src.backend.core.dependencies import sessionmanager
 from src.backend.features.agents.presentation.api import agent_router, mandate_router
 
 # Configure logging
@@ -14,6 +18,9 @@ logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
 logger = logging.getLogger(__name__)
+
+# Get settings
+settings = get_settings()
 
 
 @asynccontextmanager
@@ -24,13 +31,15 @@ async def lifespan(app: FastAPI):
     """
     # Startup
     logger.info("Starting TradingBotAgent API...")
-    # TODO: Initialize database, Redis, etc.
+    logger.info(f"Database URL: {settings.database_url}")
 
     yield
 
     # Shutdown
     logger.info("Shutting down TradingBotAgent API...")
-    # TODO: Close connections
+    if sessionmanager:
+        await sessionmanager.close()
+    logger.info("Database connections closed")
 
 
 app = FastAPI(
