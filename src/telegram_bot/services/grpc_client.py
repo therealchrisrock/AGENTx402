@@ -8,8 +8,9 @@ import grpc
 import sys
 import os
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
+sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..', '..', 'gen', 'python'))
 
-from gen.python.api.v1 import telegram_pb2, telegram_pb2_grpc
+from api.v1 import telegram_pb2, telegram_pb2_grpc
 
 logger = logging.getLogger(__name__)
 
@@ -175,11 +176,9 @@ class BackendGRPCClient:
             Intent classification or None if error
         """
         try:
-            request = telegram_pb2.ClassifyIntentRequest(
-                message=message,
-                telegram_id=telegram_id,
-                context=context or {}
-            )
+            request = telegram_pb2.ClassifyIntentRequest(message=message)
+            if context:
+                request.context.update(context)
             response = self.stub.ClassifyIntent(request)
 
             return {

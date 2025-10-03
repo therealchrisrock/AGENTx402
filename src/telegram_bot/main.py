@@ -8,6 +8,7 @@ from telegram.ext import Application, CallbackQueryHandler, CommandHandler, Mess
 
 from src.telegram_bot.core.config import get_settings
 from src.telegram_bot.handlers import callbacks, commands, messages
+from src.telegram_bot.handlers.flows import WalletConnectionFlow
 
 # Setup logging
 logging.basicConfig(
@@ -32,6 +33,10 @@ def main() -> None:
     """Start the Telegram bot."""
     # Create application
     application = Application.builder().token(settings.telegram_bot_token).build()
+
+    # Register conversation handlers first (higher priority)
+    wallet_handler = WalletConnectionFlow.get_conversation_handler()
+    application.add_handler(wallet_handler)
 
     # Register command handlers
     application.add_handler(CommandHandler("start", commands.start))

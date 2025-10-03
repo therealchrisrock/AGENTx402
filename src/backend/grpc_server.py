@@ -15,8 +15,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 import sys
 import os
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
+sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..', 'gen', 'python'))
 
-from gen.python.api.v1 import telegram_pb2, telegram_pb2_grpc
+from api.v1 import telegram_pb2, telegram_pb2_grpc
 
 # Import user domain and application
 from src.backend.core.dependencies import get_db

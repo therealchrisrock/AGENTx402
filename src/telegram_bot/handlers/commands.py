@@ -117,6 +117,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 🤖 TradingBotAgent Commands:
 
 /start - Start the bot and see welcome message
+/wallet - Connect or manage your wallet
 /help - Show this help message
 /status - View your active mandates and agents
 /cancel - Cancel current operation
