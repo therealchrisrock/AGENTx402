@@ -16,14 +16,11 @@ class AggregateRoot(Entity):
 
     _domain_events: List[DomainEvent] = []
 
-    class Config:
-        """Pydantic configuration."""
-
-        from_attributes = True
-        validate_assignment = True
-        arbitrary_types_allowed = True
-        # Exclude private fields from serialization
-        fields = {"_domain_events": {"exclude": True}}
+    model_config = {
+        "from_attributes": True,
+        "validate_assignment": True,
+        "arbitrary_types_allowed": True,
+    }
 
     def add_domain_event(self, event: DomainEvent) -> None:
         """Add a domain event to be published."""

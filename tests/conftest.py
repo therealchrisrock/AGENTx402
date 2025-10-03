@@ -10,6 +10,13 @@ from sqlalchemy.orm import sessionmaker
 from src.backend.shared.infrastructure.database import Base
 
 
+# Configure anyio to only use asyncio backend
+@pytest.fixture(scope="session")
+def anyio_backend():
+    """Configure anyio to use only asyncio."""
+    return "asyncio"
+
+
 @pytest.fixture(scope="session")
 def event_loop() -> Generator:
     """Create an instance of the default event loop for the test session."""
